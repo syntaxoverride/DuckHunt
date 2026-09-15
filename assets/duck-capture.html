@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Duck capture stages</title>
+<style>
+  body{margin:0;background:#050a12;display:flex;gap:24px;padding:24px;flex-wrap:wrap}
+  .phone{width:368px;height:448px;border-radius:28px;overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.55);border:3px solid #1a2a3a;position:relative}
+  canvas{display:block;width:368px;height:448px;image-rendering:pixelated}
+  label{position:absolute;left:12px;top:10px;color:#8aa4b8;font:12px sans-serif;z-index:2}
+</style>
+</head>
+<body>
+<div class="phone" data-mode="calm"><label>calm</label><canvas width="368" height="448"></canvas></div>
+<div class="phone" data-mode="happy"><label>happy + bobber</label><canvas width="368" height="448"></canvas></div>
+<div class="phone" data-mode="angry"><label>angry</label><canvas width="368" height="448"></canvas></div>
+<div class="phone" data-mode="green"><label>green flock</label><canvas width="368" height="448"></canvas></div>
+<script>
+const SPR = [
+  ".....YYYY.......","....YYYYYY......","....YYKYYY......",
+  "....YYYYYYOOO...","....YYYYYYOOO...",".....YYYYY......",
+  ".....YYYY.......","..YYYYYYYYY..YY.",".YYYYYYYYYYYYYY.",
+  "YYYYYYYYYYYYYYY.","YyyyyyyyyyyyyyY.",".YyyyyyyyyyyyY..",
+  "..YYYYYYYYYYY..."
+];
+const TIERS = {
+  yellow:{body:0xFE89,shade:0xE545},
+  green:{body:0x3626,shade:0x1B85},
+};
+function rgb565(c){const r=((c>>11)&31)*255/31|0,g=((c>>5)&63)*255/63|0,b=(c&31)*255/31|0;return`rgb(${r},${g},${b})`}
+function blend(bg,fg,a){
+  const br=(bg>>11)&31,bg6=(bg>>5)&63,bb=bg&31;
+  const fr=(fg>>11)&31,fg6=(fg>>5)&63,fb=fg&31;
+  const r=(fr*a+br*(255-a))/255|0,g=(fg6*a+bg6*(255-a))/255|0,b=(fb*a+bb*(255-a))/255|0;
+  return (r<<11)|(g<<5)|b;
+}
+function drawDuck(ctx, opt){
+  const W=368,H=448,CELL=16,COLS=16,ROWS=13;
+  const OX=((W-COLS*CELL)/2)|0, OY=56, CX=OX+(COLS*CELL)/2, CY=OY+(ROWS*CELL)/2;
+  const WATER_Y=280, DEEP=340;
+  const tier=TIERS[opt.colour||'yellow'];
+  const pal={Y:tier.body,y:tier.shade,O:0xFC45,K:0x10A3};
+  const hot=opt.hot?{Y:blend(tier.body,0xFFFF,110),y:blend(tier.shade,0xFFFF,90),O:0xFE31,K:0x3942}:pal;
+  const t=opt.t||0;
+  const bob=opt.happy?Math.round(Math.sin(t*12)*6):Math.round(Math.sin(t*2.2)*4);
+
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+
+  // rings
+  for(let i=0;i<5;i++){
+    const ph=((t*0.4)+i/5)%1;
+    const r=28+ph*(220-28);
+    const g=Math.max(0,(0.38*(1-ph)*63)|0);
+    ctx.strokeStyle=`rgb(0,${g*4},0)`;
+    ctx.beginPath(); ctx.arc(CX,CY,r,0,Math.PI*2); ctx.stroke();
+  }
+
+  // water columns
+  for(let x=0;x<W;x+=4){
+    const s=WATER_Y+Math.round(3.2*Math.sin(x/26+t*1.6)+1.8*Math.sin(x/11-t*2.3));
+    ctx.fillStyle=rgb565(0x09CB); ctx.fillRect(x,s,4,H-s);
+    const d=Math.max(s,DEEP);
+    ctx.fillStyle=rgb565(0x0947); ctx.fillRect(x,d,4,H-d);
+    ctx.fillStyle=rgb565(0x3C99); ctx.fillRect(x,s,4,2);
+  }
+
+  // reflection
+  for(let r=0;r<ROWS;r++){
+    const y=WATER_Y+(ROWS-1-r)*CELL+10-bob;
+    if(y>=H) continue;
+    for(let c=0;c<COLS;c++){
+      const ch=SPR[r][c]; if(ch==='.') continue;
+      const col=blend(0x09CB, pal[ch], 41);
+      ctx.fillStyle=rgb565(col);
+      ctx.fillRect(OX+c*CELL,y,CELL,CELL);
+    }
+  }
+
+  // ripples
+  for(let i=0;i<2;i++){
+    const ph=(t*0.6+i/2)%1;
+    ctx.strokeStyle=rgb565(0x8EBF);
+    ctx.beginPath();
+    ctx.ellipse(CX,WATER_Y+6,40+ph*120,4+ph*8,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  // duck
+  const blink=((t*1000)%10000)<180;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const ch=SPR[r][c]; if(ch==='.') continue;
+    let col=hot[ch];
+    if(ch==='K'&&blink&&!opt.angry) col=hot.Y;
+    ctx.fillStyle=rgb565(col);
+    ctx.fillRect(OX+c*CELL,OY+r*CELL+bob,CELL,CELL);
+  }
+  if(opt.angry){
+    ctx.fillStyle=rgb565(hot.K);
+    ctx.fillRect(OX+6*CELL-4,OY+2*CELL+bob-10,CELL+20,5);
+  }
+
+  // bobbers
+  const n=opt.bobbers||0;
+  for(let i=0;i<n;i++){
+    const x=28+i*42;
+    const surf=WATER_Y+Math.round(3.2*Math.sin(x/26+t*1.6));
+    const cy=surf+Math.round(Math.sin(t*3+i)*2)+12;
+    ctx.strokeStyle='#C0C0C0'; ctx.beginPath(); ctx.moveTo(x,cy-25); ctx.lineTo(x,cy-18); ctx.stroke();
+    ctx.fillStyle='#F80000'; ctx.beginPath(); ctx.arc(x,cy,18,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x-6,cy-6,2,0,Math.PI*2); ctx.fill();
+  }
+
+  // battery line
+  ctx.fillStyle='#0A2C'; ctx.beginPath();
+  roundRect(ctx,16,H-10,W-32,6,3); ctx.fill();
+  ctx.fillStyle='#3B9F'; ctx.beginPath();
+  roundRect(ctx,16,H-10,(W-32)*0.72,6,3); ctx.fill();
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+const phones=[...document.querySelectorAll('.phone')];
+const start=performance.now();
+function frame(now){
+  const t=(now-start)/1000;
+  phones.forEach(p=>{
+    const c=p.querySelector('canvas');
+    const ctx=c.getContext('2d');
+    const mode=p.dataset.mode;
+    drawDuck(ctx,{
+      t,
+      colour: mode==='green'?'green':'yellow',
+      happy: mode==='happy',
+      hot: mode==='happy',
+      angry: mode==='angry',
+      bobbers: mode==='happy'?2:0,
+    });
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

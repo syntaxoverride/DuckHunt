@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>WiCyS CYD mockup — ESP32-2432S028</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap");
+  :root {
+    --desk: #1a1510;
+    --yellow: #e8b84a;
+    --yellow-dk: #c4922e;
+    --foam: #f4efe6;
+    --mute: #9a8f7e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    color: var(--foam);
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 0%, #3a2a18 0%, transparent 55%),
+      var(--desk);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 3rem;
+    gap: 1.25rem;
+  }
+  h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .sub { color: var(--mute); font-size: 0.95rem; max-width: 36ch; text-align: center; line-height: 1.4; }
+  .board {
+    background: linear-gradient(160deg, #f0c45a 0%, var(--yellow) 40%, var(--yellow-dk) 100%);
+    padding: 18px 16px 28px;
+    border-radius: 6px;
+    box-shadow:
+      0 24px 60px rgba(0,0,0,.45),
+      inset 0 1px 0 rgba(255,255,255,.35),
+      inset 0 -2px 0 rgba(0,0,0,.12);
+    position: relative;
+  }
+  .board::before {
+    content: "ESP32-2432S028";
+    position: absolute;
+    bottom: 8px; left: 0; right: 0;
+    text-align: center;
+    font: 600 9px "IBM Plex Mono", monospace;
+    color: rgba(80,50,10,.55);
+    letter-spacing: 0.08em;
+  }
+  .screw {
+    position: absolute; width: 8px; height: 8px; border-radius: 50%;
+    background: #8a7040; box-shadow: inset 0 1px 2px rgba(0,0,0,.4);
+  }
+  .screw.tl { top: 6px; left: 6px; }
+  .screw.tr { top: 6px; right: 6px; }
+  .screw.bl { bottom: 18px; left: 6px; }
+  .screw.br { bottom: 18px; right: 6px; }
+  .bezel {
+    background: #111;
+    padding: 8px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px #333;
+  }
+  canvas {
+    display: block;
+    width: 240px;
+    height: 320px;
+    image-rendering: pixelated;
+    background: #000;
+  }
+  .modes {
+    display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center;
+  }
+  .modes button {
+    font: 600 0.85rem "IBM Plex Sans", sans-serif;
+    border: 1px solid #4a3c28;
+    background: #2a2218;
+    color: var(--foam);
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .modes button.on {
+    background: var(--yellow);
+    color: #1a1208;
+    border-color: var(--yellow);
+  }
+  .hint {
+    font-size: 0.8rem;
+    color: var(--mute);
+    font-family: "IBM Plex Mono", monospace;
+  }
+</style>
+</head>
+<body>
+  <h1>CYD mockup</h1>
+  <p class="sub">240×320 ILI9341 preview of the WiCyS duck — same sprite scaled to the Cheap Yellow Display.</p>
+
+  <div class="board">
+    <span class="screw tl"></span><span class="screw tr"></span>
+    <span class="screw bl"></span><span class="screw br"></span>
+    <div class="bezel">
+      <canvas id="c" width="240" height="320"></canvas>
+    </div>
+  </div>
+
+  <div class="modes">
+    <button type="button" data-mode="calm" class="on">Calm</button>
+    <button type="button" data-mode="happy">Happy + bobbers</button>
+    <button type="button" data-mode="angry">Angry</button>
+    <button type="button" data-mode="green">Green flock</button>
+  </div>
+  <p class="hint">BOOT = next colour · left-edge tap = prev · swipe left = admin</p>
+
+<script>
+const SPR = [
+  ".....YYYY.......","....YYYYYY......","....YYKYYY......",
+  "....YYYYYYOOO...","....YYYYYYOOO...",".....YYYYY......",
+  ".....YYYY.......","..YYYYYYYYY..YY.",".YYYYYYYYYYYYYY.",
+  "YYYYYYYYYYYYYYY.","YyyyyyyyyyyyyyY.",".YyyyyyyyyyyyY..",
+  "..YYYYYYYYYYY..."
+];
+const TIERS = {
+  yellow:{body:0xFE89,shade:0xE545},
+  green:{body:0x3626,shade:0x1B85},
+};
+function rgb565(c){
+  const r=((c>>11)&31)*255/31|0,g=((c>>5)&63)*255/63|0,b=(c&31)*255/31|0;
+  return `rgb(${r},${g},${b})`;
+}
+function blend(bg,fg,a){
+  const br=(bg>>11)&31,bg6=(bg>>5)&63,bb=bg&31;
+  const fr=(fg>>11)&31,fg6=(fg>>5)&63,fb=fg&31;
+  const r=(fr*a+br*(255-a))/255|0,g=(fg6*a+bg6*(255-a))/255|0,b=(fb*a+bb*(255-a))/255|0;
+  return (r<<11)|(g<<5)|b;
+}
+
+const W=240,H=320,CELL=12,COLS=16,ROWS=13;
+const OX=((W-COLS*CELL)/2)|0, OY=36;
+const CX=OX+(COLS*CELL)/2, CY=OY+(ROWS*CELL)/2;
+const WATER_Y=200, DEEP=250;
+
+let mode = { colour:'yellow', happy:false, hot:false, angry:false, bobbers:0 };
+
+function draw(ctx, t){
+  const tier=TIERS[mode.colour];
+  const pal={Y:tier.body,y:tier.shade,O:0xFC45,K:0x10A3};
+  const hot=mode.hot?{Y:blend(tier.body,0xFFFF,110),y:blend(tier.shade,0xFFFF,90),O:0xFE31,K:0x3942}:pal;
+  const bob=mode.happy?Math.round(Math.sin(t*12)*5):Math.round(Math.sin(t*2.2)*3);
+
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+
+  for(let i=0;i<5;i++){
+    const ph=((t*0.4)+i/5)%1;
+    const r=20+ph*(140-20);
+    const g=Math.max(0,(0.38*(1-ph)*63)|0);
+    ctx.strokeStyle=`rgb(0,${g*4},0)`;
+    ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(CX,CY,r,0,Math.PI*2); ctx.stroke();
+  }
+
+  for(let x=0;x<W;x+=4){
+    const s=WATER_Y+Math.round(2.6*Math.sin(x/26+t*1.6)+1.4*Math.sin(x/11-t*2.3));
+    ctx.fillStyle=rgb565(0x09CB); ctx.fillRect(x,s,4,H-s);
+    const d=Math.max(s,DEEP);
+    ctx.fillStyle=rgb565(0x0947); ctx.fillRect(x,d,4,H-d);
+    ctx.fillStyle=rgb565(0x3C99); ctx.fillRect(x,s,4,2);
+  }
+
+  for(let r=0;r<ROWS;r++){
+    const y=WATER_Y+(ROWS-1-r)*CELL+8-bob;
+    if(y>=H) continue;
+    for(let c=0;c<COLS;c++){
+      const ch=SPR[r][c]; if(ch==='.') continue;
+      ctx.fillStyle=rgb565(blend(0x09CB, pal[ch], 41));
+      ctx.fillRect(OX+c*CELL,y,CELL,CELL);
+    }
+  }
+
+  for(let i=0;i<2;i++){
+    const ph=(t*0.6+i/2)%1;
+    ctx.strokeStyle=rgb565(0x8EBF);
+    ctx.beginPath();
+    ctx.ellipse(CX,WATER_Y+4,28+ph*90,3+ph*6,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  const blink=((t*1000)%10000)<180;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const ch=SPR[r][c]; if(ch==='.') continue;
+    let col=hot[ch];
+    if(ch==='K'&&blink&&!mode.angry) col=hot.Y;
+    ctx.fillStyle=rgb565(col);
+    ctx.fillRect(OX+c*CELL,OY+r*CELL+bob,CELL,CELL);
+  }
+  if(mode.angry){
+    ctx.fillStyle=rgb565(hot.K);
+    ctx.fillRect(OX+6*CELL-2,OY+2*CELL+bob-8,CELL+14,4);
+  }
+
+  for(let i=0;i<(mode.bobbers||0);i++){
+    const x=18+i*30;
+    const surf=WATER_Y+Math.round(2.6*Math.sin(x/26+t*1.6));
+    const cy=surf+Math.round(Math.sin(t*3+i)*2)+8;
+    ctx.strokeStyle='#C0C0C0'; ctx.beginPath(); ctx.moveTo(x,cy-16); ctx.lineTo(x,cy-10); ctx.stroke();
+    ctx.fillStyle='#F80000'; ctx.beginPath(); ctx.arc(x,cy,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x-4,cy-4,1.5,0,Math.PI*2); ctx.fill();
+  }
+
+  // left-edge hint strip (prev colour)
+  ctx.fillStyle='rgba(240,193,74,0.12)';
+  ctx.fillRect(0,0,4,H);
+}
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const start=performance.now();
+function frame(now){
+  draw(ctx,(now-start)/1000);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+document.querySelectorAll('.modes button').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.modes button').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    const m=btn.dataset.mode;
+    if(m==='calm') mode={colour:'yellow',happy:false,hot:false,angry:false,bobbers:0};
+    if(m==='happy') mode={colour:'yellow',happy:true,hot:true,angry:false,bobbers:2};
+    if(m==='angry') mode={colour:'yellow',happy:false,hot:false,angry:true,bobbers:0};
+    if(m==='green') mode={colour:'green',happy:false,hot:false,angry:false,bobbers:0};
+  });
+});
+</script>
+</body>
+</html>

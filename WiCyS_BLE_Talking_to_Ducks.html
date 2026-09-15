@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WiCyS — Talking to Ducks (BLE)</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap");
+
+  :root {
+    --sky: #061018;
+    --deep: #0b1c33;
+    --water: #134e6a;
+    --foam: #e8f4fa;
+    --amber: #e8a03a;
+    --duck: #f0c14a;
+    --ok: #3d9b7a;
+    --bad: #e85a4a;
+    --mute: #8aa4b8;
+    --card: #0e2236;
+    --line: #1e3d57;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--sky);
+    color: var(--foam);
+    font-family: "Source Sans 3", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  body {
+    background:
+      radial-gradient(ellipse 70% 45% at 50% -8%, #163a52 0%, transparent 55%),
+      radial-gradient(ellipse 50% 35% at 90% 100%, #0a2a38 0%, transparent 45%),
+      var(--sky);
+  }
+
+  .deck { height: 100%; width: 100%; position: relative; }
+
+  .slide {
+    display: none;
+    height: 100%;
+    padding: clamp(1.5rem, 4vw, 3rem) clamp(1.5rem, 5vw, 4rem) 4.2rem;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 1180px;
+    margin: 0 auto;
+    gap: 0.85rem;
+  }
+  .slide.active { display: flex; animation: in 320ms ease-out; }
+  .slide.split {
+    display: none;
+    flex-direction: row;
+    align-items: center;
+    gap: clamp(1.5rem, 4vw, 3rem);
+  }
+  .slide.split.active { display: flex; }
+  .slide.split .copy { flex: 1; min-width: 0; }
+  .slide.split .viz { flex: 0 0 auto; }
+
+  @keyframes in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  h1 {
+    font-family: Fraunces, Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(2.3rem, 5.2vw, 3.6rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    max-width: 14ch;
+  }
+  h2 {
+    font-family: Fraunces, Georgia, serif;
+    font-weight: 600;
+    font-size: clamp(1.7rem, 3.5vw, 2.45rem);
+    line-height: 1.12;
+  }
+  .eyebrow {
+    color: var(--amber);
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .lede {
+    font-size: clamp(1.1rem, 2vw, 1.35rem);
+    color: var(--mute);
+    max-width: 38ch;
+    line-height: 1.45;
+  }
+  p, li {
+    font-size: clamp(1.05rem, 1.9vw, 1.3rem);
+    line-height: 1.45;
+  }
+  ul { list-style: none; }
+  li {
+    padding: 0.35rem 0 0.35rem 1.25rem;
+    position: relative;
+    max-width: 42ch;
+  }
+  li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0.85rem;
+    width: 0.5rem; height: 0.5rem;
+    border-radius: 50%;
+    background: var(--duck);
+  }
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--duck);
+    font-weight: 600;
+  }
+  .callout {
+    margin-top: 0.4rem;
+    padding: 0.85rem 1rem;
+    border-left: 4px solid var(--amber);
+    background: rgba(232, 160, 58, 0.08);
+    max-width: 42ch;
+    font-size: 1.05rem;
+  }
+
+  /* Device bezel */
+  .phone {
+    width: min(280px, 32vw);
+    aspect-ratio: 368 / 448;
+    border-radius: 22px;
+    overflow: hidden;
+    border: 3px solid #24384c;
+    box-shadow:
+      0 24px 50px rgba(0,0,0,.45),
+      inset 0 0 0 1px rgba(255,255,255,.06);
+    background: #000;
+    position: relative;
+  }
+  .phone canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+  .phone-caption {
+    text-align: center;
+    margin-top: 0.65rem;
+    color: var(--mute);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .phone-row {
+    display: flex;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-end;
+  }
+  .phone-wrap { text-align: center; }
+
+  /* Concept stages */
+  .stage {
+    position: relative;
+    width: min(420px, 44vw);
+    height: min(360px, 52vh);
+    background:
+      radial-gradient(circle at 50% 55%, #123048 0%, #0a1826 70%);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    overflow: hidden;
+  }
+  .stage canvas { width: 100%; height: 100%; display: block; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem 1rem;
+    margin-top: 0.75rem;
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--mute);
+    font-size: 0.95rem;
+  }
+  .swatch {
+    width: 12px; height: 12px; border-radius: 50%;
+    display: inline-block;
+  }
+
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+  .chip {
+    background: var(--water);
+    color: var(--foam);
+    padding: 0.5rem 0.85rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    opacity: 0.35;
+    transform: scale(0.96);
+    transition: opacity 280ms, transform 280ms, background 280ms;
+  }
+  .chip.on {
+    opacity: 1;
+    transform: scale(1);
+    background: #1a6a8a;
+    box-shadow: 0 0 0 2px rgba(232, 160, 58, 0.45);
+  }
+  .arrow { color: var(--amber); font-weight: 700; opacity: 0.5; }
+  .arrow.on { opacity: 1; }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 0.5rem;
+  }
+  @media (max-width: 800px) {
+    .slide.split { flex-direction: column; justify-content: center; }
+    .slide.split .viz { width: 100%; display: flex; justify-content: center; }
+    .compare { grid-template-columns: 1fr; }
+    .phone { width: min(220px, 42vw); }
+  }
+
+  .tile {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+  }
+  .tile strong {
+    display: block;
+    font-family: Fraunces, Georgia, serif;
+    font-size: 1.2rem;
+    color: var(--duck);
+    margin-bottom: 0.3rem;
+  }
+  .tile p { font-size: 1rem; color: var(--mute); }
+
+  .doors {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.65rem;
+    margin-top: 0.6rem;
+  }
+  @media (max-width: 900px) { .doors { grid-template-columns: 1fr 1fr; } }
+  .door {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 0.9rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .door .name {
+    font-family: ui-monospace, Menlo, monospace;
+    color: var(--duck);
+    font-weight: 700;
+    font-size: 1.05rem;
+  }
+  .door .act { color: var(--mute); font-size: 0.9rem; margin-top: 0.25rem; }
+  .door .pulse {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 30%, rgba(240,193,74,.12) 50%, transparent 70%);
+    transform: translateX(-120%);
+  }
+  .door.lit .pulse { animation: sweep 1.8s ease-in-out infinite; }
+  @keyframes sweep {
+    to { transform: translateX(120%); }
+  }
+
+  .footer {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    padding: 0.75rem 1.4rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(transparent, rgba(6, 16, 24, 0.95));
+    font-size: 0.88rem;
+    color: var(--mute);
+    z-index: 5;
+  }
+  .dots { display: flex; gap: 0.32rem; }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #2a455c; border: 0; cursor: pointer;
+  }
+  .dot.on { background: var(--duck); }
+  kbd {
+    font-family: ui-monospace, monospace;
+    background: #16324a;
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+    border: 1px solid #2a4d6a;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: clamp(1.5rem, 4vw, 3rem);
+    flex-wrap: wrap;
+  }
+
+  /* ---- Loop: duck + nRF Connect mock ---- */
+  .loop-stage {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+    margin-top: 0.9rem;
+    flex-wrap: wrap;
+  }
+  .loop-stage .phone { width: 180px; }
+
+  .nrf-phone {
+    width: min(280px, 42vw);
+    height: 420px;
+    border-radius: 28px;
+    border: 3px solid #2a2a2e;
+    background: #000;
+    box-shadow: 0 22px 50px rgba(0,0,0,.5);
+    overflow: hidden;
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .nrf-screen {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    background: #121212;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    font-size: 11px;
+  }
+  .nrf-screen.on { display: flex; animation: nrfIn 280ms ease-out; }
+  @keyframes nrfIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  .nrf-status {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px 2px; font-size: 10px; font-weight: 600; color: #eee;
+  }
+  .nrf-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px 8px; gap: 8px;
+  }
+  .nrf-bar .title { font-size: 15px; font-weight: 700; }
+  .nrf-disc { color: #4fc3f7; font-weight: 600; font-size: 12px; }
+  .nrf-icons { display: flex; gap: 10px; color: #bbb; font-size: 13px; }
+  .nrf-body { flex: 1; overflow: hidden; padding: 0 0 8px; position: relative; }
+  .nrf-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px 14px; border-top: 1px solid #2a2a2a; background: #0e0e0e;
+  }
+  .nrf-foot .dev { font-weight: 700; font-size: 13px; }
+  .nrf-pill {
+    display: inline-block; margin-top: 3px;
+    background: #00897b; color: #fff; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .nrf-nav { color: #777; font-size: 16px; }
+
+  .nrf-svc {
+    border-left: 3px solid #26a69a;
+    margin: 4px 8px;
+    padding: 6px 8px 2px;
+  }
+  .nrf-svc .uuid {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9.5px; font-weight: 700; color: #f0f0f0;
+    word-break: break-all; line-height: 1.25;
+  }
+  .nrf-svc .lbl {
+    color: #9e9e9e; font-size: 9px; letter-spacing: 0.06em;
+    text-transform: uppercase; margin-top: 2px;
+  }
+  .nrf-char {
+    margin: 0 8px 0 14px;
+    padding: 8px 6px;
+    border-top: 1px solid #222;
+    position: relative;
+  }
+  .nrf-char.hot {
+    background: rgba(232,160,58,.12);
+    box-shadow: inset 0 0 0 1px rgba(232,160,58,.45);
+    border-radius: 8px;
+  }
+  .nrf-char .uuid {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9px; color: #e8e8e8; word-break: break-all;
+  }
+  .nrf-char .props { color: #9e9e9e; font-size: 10px; margin-top: 2px; }
+  .nrf-char .name-tag {
+    display: inline-block; margin-top: 3px;
+    background: #1e3a4a; color: #f0c14a;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 4px;
+  }
+  .nrf-char .val {
+    margin-top: 4px; color: #b0bec5; font-size: 10px; line-height: 1.35;
+  }
+  .nrf-char .val.ok { color: #81c784; }
+  .nrf-actions {
+    display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;
+    color: #90a4ae; font-size: 12px;
+  }
+  .nrf-actions .pulse-btn {
+    color: #4fc3f7; animation: tapPulse 1.1s ease-in-out infinite;
+  }
+  @keyframes tapPulse {
+    0%,100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.25); opacity: 0.7; }
+  }
+
+  .nrf-scan-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-bottom: 1px solid #1e1e1e;
+  }
+  .nrf-scan-row.hot {
+    background: rgba(79,195,247,.1);
+    box-shadow: inset 3px 0 0 #4fc3f7;
+  }
+  .nrf-rssi {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #1b3a2a; color: #81c784;
+    display: grid; place-items: center; font-size: 9px; font-weight: 700;
+  }
+  .nrf-scan-row .nm { font-weight: 700; font-size: 12px; }
+  .nrf-scan-row .sub { color: #888; font-size: 9px; margin-top: 1px; }
+  .nrf-connect-btn {
+    margin-left: auto;
+    background: #00897b; color: #fff; border: 0;
+    border-radius: 6px; padding: 5px 10px;
+    font-size: 11px; font-weight: 700;
+  }
+  .nrf-connect-btn.pulse { animation: tapPulse 1.1s ease-in-out infinite; }
+
+  .nrf-modal {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,.55);
+    display: flex; align-items: flex-end;
+    padding: 10px;
+  }
+  .nrf-sheet {
+    width: 100%; background: #1c1c1e; border-radius: 14px;
+    padding: 12px; border: 1px solid #333;
+  }
+  .nrf-sheet h4 { font-size: 13px; margin-bottom: 8px; }
+  .nrf-field {
+    background: #2c2c2e; border-radius: 8px; padding: 8px 10px;
+    font-family: ui-monospace, Menlo, monospace;
+    color: #f0c14a; font-size: 13px; min-height: 34px;
+  }
+  .nrf-field .caret {
+    display: inline-block; width: 1px; height: 12px;
+    background: #4fc3f7; margin-left: 1px;
+    animation: blink 1s step-end infinite;
+    vertical-align: -1px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .nrf-enc { display: flex; gap: 6px; margin: 8px 0; }
+  .nrf-enc span {
+    padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 700;
+    background: #2c2c2e; color: #888;
+  }
+  .nrf-enc span.on { background: #01579b; color: #fff; }
+  .nrf-send {
+    width: 100%; margin-top: 4px;
+    background: #00897b; color: #fff; border: 0;
+    border-radius: 8px; padding: 9px; font-weight: 700; font-size: 12px;
+  }
+
+  .nrf-hint {
+    text-align: center; margin-top: 0.55rem;
+    color: var(--mute); font-size: 0.9rem; font-weight: 600;
+    min-height: 1.2em;
+  }
+  .slide.split .doors {
+    grid-template-columns: 1fr 1fr;
+    max-width: 420px;
+  }
+  .nrf-char.hot-char {
+    background: rgba(232,160,58,.14);
+    box-shadow: inset 0 0 0 1px rgba(232,160,58,.5);
+    border-radius: 8px;
+  }
+  @media (max-width: 700px) {
+    .nrf-phone { width: min(240px, 70vw); height: 380px; }
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 0 Title -->
+  <section class="slide active" data-scene="title">
+    <div class="title-row">
+      <div>
+        <p class="eyebrow">WiCyS · Hands-on Bluetooth</p>
+        <h1>Talking to ducks</h1>
+        <p class="lede">Learn how Bluetooth Low Energy devices talk — by helping a lost duck find its way home.</p>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone"><canvas data-duck="calm" width="368" height="448"></canvas></div>
+        <p class="phone-caption">Live from the AMOLED</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 Tonight -->
+  <section class="slide">
+    <p class="eyebrow">Tonight</p>
+    <h2>What you’ll walk out knowing</h2>
+    <ul>
+      <li>How phones <strong>find</strong> nearby BLE devices</li>
+      <li>How to <strong>connect</strong> and open a service</li>
+      <li>The difference between <strong>Read</strong> and <strong>Write</strong></li>
+      <li>How to pull a <strong>flag</strong> after a small puzzle</li>
+    </ul>
+    <p class="callout">No coding. Just nRF Connect and a curious duck.</p>
+  </section>
+
+  <!-- 2 BLE radio -->
+  <section class="slide split" data-scene="radio">
+    <div class="copy">
+      <p class="eyebrow">Concept 1</p>
+      <h2>Bluetooth Low Energy</h2>
+      <p class="lede">A short-range radio for small gadgets — earbuds, beacons, sensors… and our duck.</p>
+      <ul>
+        <li>Low power so battery devices last</li>
+        <li>Your phone speaks BLE through <span class="mono">nRF Connect</span></li>
+        <li>Not the same as classic Bluetooth audio pairing</li>
+      </ul>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="radio" data-nrf-cycle="0" data-nrf-period="99"></div>
+      <p class="nrf-hint">nRF Connect · Scanner is how your phone listens</p>
+    </div>
+  </section>
+
+  <!-- 3 Advertise vs Connect -->
+  <section class="slide split" data-scene="adv">
+    <div class="copy">
+      <p class="eyebrow">Concept 2</p>
+      <h2>Advertise ≠ Connected</h2>
+      <div class="compare">
+        <div class="tile">
+          <strong>Advertise</strong>
+          <p>The duck shouts its name into the room. Anyone scanning can see <span class="mono">DUCK-YELLOW</span>.</p>
+        </div>
+        <div class="tile">
+          <strong>Connect</strong>
+          <p>You tap Connect. Now you and that duck have a private conversation.</p>
+        </div>
+      </div>
+      <p class="callout">First skill: Scan until you see a duck. Then Connect.</p>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="adv" data-nrf-cycle="0,1" data-nrf-period="3"></div>
+      <p class="nrf-hint" data-nrf-hint>Scanner → Connect</p>
+    </div>
+  </section>
+
+  <!-- 4 GATT -->
+  <section class="slide split" data-scene="gatt">
+    <div class="copy">
+      <p class="eyebrow">Concept 3</p>
+      <h2>GATT: the duck’s filing cabinet</h2>
+      <ul>
+        <li>A <strong>Service</strong> is a folder of related features</li>
+        <li><strong>Characteristics</strong> are files in that folder</li>
+        <li>Each file can allow Read, Write, or both</li>
+      </ul>
+      <p class="callout">Ignore the long UUIDs. Hunt for labels: STORY, SUBMIT, FLAG, STATUS.</p>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="gatt" data-nrf-cycle="1" data-nrf-period="99" data-nrf-highlight="chars"></div>
+      <p class="nrf-hint">One Primary Service · four named characteristics</p>
+    </div>
+  </section>
+
+  <!-- 5 Read vs Write -->
+  <section class="slide split" data-scene="rw">
+    <div class="copy">
+      <p class="eyebrow">Concept 4</p>
+      <h2>Read ↓ vs Write ↑</h2>
+      <div class="compare">
+        <div class="tile">
+          <strong>Read ↓</strong>
+          <p>Ask the duck what it knows. Use on <span class="mono">STORY</span> and <span class="mono">FLAG</span>.</p>
+        </div>
+        <div class="tile">
+          <strong>Write ↑</strong>
+          <p>Send the duck a message. Use on <span class="mono">SUBMIT</span>.</p>
+        </div>
+      </div>
+      <p class="callout"><strong>Always write as Text (UTF-8)</strong> — not Hex.</p>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="rw" data-nrf-cycle="2,3" data-nrf-period="3"></div>
+      <p class="nrf-hint" data-nrf-hint>Read STORY · Write SUBMIT</p>
+    </div>
+  </section>
+
+  <!-- 6 Four doors -->
+  <section class="slide split" data-scene="doors">
+    <div class="copy">
+      <p class="eyebrow">The duck’s four doors</p>
+      <h2>STORY · SUBMIT · FLAG · STATUS</h2>
+      <div class="doors">
+        <div class="door" data-door="0"><div class="pulse"></div><div class="name">STORY</div><div class="act">Read · scenario</div></div>
+        <div class="door" data-door="1"><div class="pulse"></div><div class="name">SUBMIT</div><div class="act">Write · your answer</div></div>
+        <div class="door" data-door="2"><div class="pulse"></div><div class="name">FLAG</div><div class="act">Read · prize</div></div>
+        <div class="door" data-door="3"><div class="pulse"></div><div class="name">STATUS</div><div class="act">Read · state</div></div>
+      </div>
+      <p class="callout" style="margin-top:1rem">STATUS may say WAITING, UNLOCKED, WRONG, or WRONG_COLOUR.</p>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="doors" data-nrf-cycle="1" data-nrf-period="99" data-nrf-highlight="chars"></div>
+      <p class="nrf-hint">Same list you’ll see after Connect</p>
+    </div>
+  </section>
+
+  <!-- 7 Loop -->
+  <section class="slide" data-scene="loop">
+    <p class="eyebrow">How to play</p>
+    <h2>The loop</h2>
+    <div class="flow" id="loop-flow">
+      <span class="chip" data-step="0">Scan</span><span class="arrow" data-step="0">→</span>
+      <span class="chip" data-step="1">Connect</span><span class="arrow" data-step="1">→</span>
+      <span class="chip" data-step="2">Read STORY</span><span class="arrow" data-step="2">→</span>
+      <span class="chip" data-step="3">Write SUBMIT</span><span class="arrow" data-step="3">→</span>
+      <span class="chip" data-step="4">Read FLAG</span>
+    </div>
+    <div class="loop-stage">
+      <div class="phone-wrap">
+        <div class="phone"><canvas data-duck="loop" width="368" height="448"></canvas></div>
+        <p class="phone-caption">Duck reacts here</p>
+      </div>
+
+      <div>
+        <div data-nrf-mount="loop" data-nrf-cycle="0,1,2,3,4" data-nrf-period="2.4"></div>
+        <p class="nrf-hint" data-nrf-hint>Find DUCK-YELLOW in the scanner</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 Feedback -->
+  <section class="slide">
+    <p class="eyebrow">What the screen tells you</p>
+    <h2>Three faces of the duck</h2>
+    <div class="phone-row" style="margin-top:0.6rem">
+      <div class="phone-wrap">
+        <div class="phone"><canvas data-duck="calm" width="368" height="448"></canvas></div>
+        <p class="phone-caption">Waiting · calm bob</p>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone"><canvas data-duck="happy" width="368" height="448"></canvas></div>
+        <p class="phone-caption">Correct · bobber drops</p>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone"><canvas data-duck="angry" width="368" height="448"></canvas></div>
+        <p class="phone-caption">Wrong · angry blink</p>
+      </div>
+    </div>
+    <p class="callout">The AMOLED never shows the puzzle text — that lives in STORY on your phone (↓ Read).</p>
+  </section>
+
+  <!-- 9 Colour -->
+  <section class="slide split" data-scene="colour">
+    <div class="copy">
+      <p class="eyebrow">Later in the night</p>
+      <h2>Colour is a clue</h2>
+      <ul>
+        <li>Side buttons change the duck’s feathers</li>
+        <li>BLE name follows: <span class="mono">DUCK-YELLOW</span>, <span class="mono">DUCK-GREEN</span>…</li>
+        <li>One stage asks for the right flock — set colour, then write</li>
+      </ul>
+      <div class="phone-row" style="margin-top:1rem; justify-content:flex-start">
+        <div class="phone-wrap">
+          <div class="phone" style="width:140px"><canvas data-duck="calm" width="368" height="448"></canvas></div>
+          <p class="phone-caption">Yellow</p>
+        </div>
+        <div class="phone-wrap">
+          <div class="phone" style="width:140px"><canvas data-duck="green" width="368" height="448"></canvas></div>
+          <p class="phone-caption">Green</p>
+        </div>
+      </div>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="colour" data-nrf-cycle="0,6" data-nrf-period="2.8"></div>
+      <p class="nrf-hint" data-nrf-hint>Scanner name matches the feathers</p>
+    </div>
+  </section>
+
+  <!-- 10 Setup -->
+  <section class="slide split" data-scene="setup">
+    <div class="copy">
+      <p class="eyebrow">Setup</p>
+      <h2>Before you start</h2>
+      <ul>
+        <li>Install <span class="mono">nRF Connect</span> (iOS or Android)</li>
+        <li>Turn Bluetooth on</li>
+        <li>Stand near a powered duck</li>
+        <li>Scan for a name like <span class="mono">DUCK-YELLOW</span></li>
+      </ul>
+      <p class="callout">Write answers as <strong>Text / UTF-8</strong>, never Hex.</p>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="setup" data-nrf-cycle="0" data-nrf-period="99"></div>
+      <p class="nrf-hint">Open Scanner · look for DUCK-…</p>
+    </div>
+  </section>
+
+  <!-- 11 Stages — no answers -->
+  <section class="slide split" data-scene="stages">
+    <div class="copy">
+      <p class="eyebrow">Round structure</p>
+      <h2>Three stages — STORY tells you everything</h2>
+      <div class="compare" style="grid-template-columns:1fr">
+        <div class="tile">
+          <strong>1 · Say hello</strong>
+          <p>Read STORY. Write the greeting word it asks for.</p>
+        </div>
+        <div class="tile">
+          <strong>2 · Unscramble</strong>
+          <p>Decode a short Base64 clue (CyberChef works). Write the word.</p>
+        </div>
+        <div class="tile">
+          <strong>3 · Right flock</strong>
+          <p>Set the colour STORY names, then write the final word.</p>
+        </div>
+      </div>
+      <p class="callout">After each unlock: read FLAG, then read STORY again for the next clue.</p>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="stages" data-nrf-cycle="2,4" data-nrf-period="3.2"></div>
+      <p class="nrf-hint" data-nrf-hint>STORY first · FLAG after a correct write</p>
+    </div>
+  </section>
+
+  <!-- 12 Gotchas -->
+  <section class="slide split" data-scene="gotchas">
+    <div class="copy">
+      <p class="eyebrow">Common gotchas</p>
+      <h2>When it “doesn’t work”</h2>
+      <ul>
+        <li><strong>Hex vs Text</strong> — switch write encoding to Text / UTF-8</li>
+        <li><strong>Wrong characteristic</strong> — write only to SUBMIT</li>
+        <li><strong>Didn’t re-read STORY</strong> — next stage lives there after unlock</li>
+        <li><strong>Wrong colour</strong> — STATUS may say WRONG_COLOUR</li>
+        <li><strong>Stuck connection</strong> — Disconnect, then Connect again</li>
+      </ul>
+    </div>
+    <div class="viz">
+      <div data-nrf-mount="gotchas" data-nrf-cycle="5,3" data-nrf-period="3"></div>
+      <p class="nrf-hint" data-nrf-hint>Hex looks clever — Text is correct</p>
+    </div>
+  </section>
+
+  <!-- 13 Skills -->
+  <section class="slide">
+    <p class="eyebrow">Words for your resume</p>
+    <h2>What you practiced</h2>
+    <ul>
+      <li>BLE scanning and connection</li>
+      <li>GATT services and characteristics</li>
+      <li>Reading and writing attributes</li>
+      <li>Encoding (Base64) as data-in-transit</li>
+      <li>Simple access control (state / colour gate)</li>
+    </ul>
+    <p class="callout">That’s real IoT reconnaissance — friendlier, and feathered.</p>
+  </section>
+
+  <!-- 14 Go -->
+  <section class="slide" data-scene="title">
+    <div class="title-row">
+      <div>
+        <p class="eyebrow">Your turn</p>
+        <h2>Go talk to a duck</h2>
+        <p class="lede">Scan → Connect → Read STORY → Write SUBMIT as Text → Read FLAG.</p>
+        <p class="callout">Ask an instructor if STATUS stays WRONG after two careful tries.</p>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone"><canvas data-duck="happy" width="368" height="448"></canvas></div>
+        <p class="phone-caption">Good luck</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+
+<template id="nrf-tpl">
+  <div class="nrf-phone" aria-label="nRF Connect">
+<!-- 0 Scan -->
+          <div class="nrf-screen" data-nrf="0">
+            <div class="nrf-status"><span>16:30</span><span>nRF Connect</span></div>
+            <div class="nrf-bar"><span class="title">Scanner</span><span class="nrf-icons">↻ ⚙</span></div>
+            <div class="nrf-body">
+              <div class="nrf-scan-row">
+                <div class="nrf-rssi">−71</div>
+                <div><div class="nm">Apple Watch</div><div class="sub">Random · Connectable</div></div>
+              </div>
+              <div class="nrf-scan-row hot">
+                <div class="nrf-rssi">−42</div>
+                <div>
+                  <div class="nm">DUCK-YELLOW</div>
+                  <div class="sub">28:84:85:8D:4F:91 · Connectable</div>
+                </div>
+                <button class="nrf-connect-btn pulse" type="button">Connect</button>
+              </div>
+              <div class="nrf-scan-row">
+                <div class="nrf-rssi">−88</div>
+                <div><div class="nm">Unknown</div><div class="sub">N/A · Connectable</div></div>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div><div class="dev">Scanner</div></div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+
+          <!-- 1 Connect -->
+          <div class="nrf-screen" data-nrf="1">
+            <div class="nrf-status"><span>16:30</span><span>●●●</span></div>
+            <div class="nrf-bar">
+              <span class="nrf-icons">☰</span>
+              <span class="nrf-disc">Disconnect</span>
+            </div>
+            <div class="nrf-body">
+              <div class="nrf-svc">
+                <div class="uuid">D0C40010-0000-1000-8000-00805F9B34FB</div>
+                <div class="lbl">Primary Service</div>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40011-…</div>
+                <div class="props">PROPERTIES: READ</div>
+                <span class="name-tag">STORY</span>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40012-…</div>
+                <div class="props">PROPERTIES: WRITE</div>
+                <span class="name-tag">SUBMIT</span>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40013-…</div>
+                <div class="props">PROPERTIES: READ</div>
+                <span class="name-tag">FLAG</span>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40014-…</div>
+                <div class="props">PROPERTIES: READ, NOTIFY</div>
+                <span class="name-tag">STATUS</span>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div>
+                <div class="dev">DUCK-YELLOW</div>
+                <span class="nrf-pill">Connected</span>
+              </div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+
+          <!-- 2 Read STORY -->
+          <div class="nrf-screen" data-nrf="2">
+            <div class="nrf-status"><span>16:30</span><span>●●●</span></div>
+            <div class="nrf-bar">
+              <span class="nrf-icons">☰</span>
+              <span class="nrf-disc">Disconnect</span>
+            </div>
+            <div class="nrf-body">
+              <div class="nrf-svc">
+                <div class="uuid">D0C40010-0000-1000-8000-00805F9B34FB</div>
+                <div class="lbl">Primary Service</div>
+              </div>
+              <div class="nrf-char hot">
+                <div class="uuid">D0C40011-0000-1000-8000-00805F9B34FB</div>
+                <div class="props">PROPERTIES: READ</div>
+                <span class="name-tag">STORY</span>
+                <div class="val">Hi! I am a duck. Write the greeting word to SUBMIT as Text (not Hex). Then Read FLAG.</div>
+                <div class="nrf-actions">
+                  <span>⧉</span><span>❝</span><span class="pulse-btn">↓</span>
+                </div>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40012-…</div>
+                <div class="props">PROPERTIES: WRITE</div>
+                <span class="name-tag">SUBMIT</span>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div>
+                <div class="dev">DUCK-YELLOW</div>
+                <span class="nrf-pill">Connected</span>
+              </div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+
+          <!-- 3 Write SUBMIT -->
+          <div class="nrf-screen" data-nrf="3">
+            <div class="nrf-status"><span>16:30</span><span>●●●</span></div>
+            <div class="nrf-bar">
+              <span class="nrf-icons">☰</span>
+              <span class="nrf-disc">Disconnect</span>
+            </div>
+            <div class="nrf-body">
+              <div class="nrf-svc">
+                <div class="uuid">D0C40010-0000-1000-8000-00805F9B34FB</div>
+                <div class="lbl">Primary Service</div>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40011-…</div>
+                <div class="props">PROPERTIES: READ</div>
+                <span class="name-tag">STORY</span>
+              </div>
+              <div class="nrf-char hot">
+                <div class="uuid">D0C40012-0000-1000-8000-00805F9B34FB</div>
+                <div class="props">PROPERTIES: WRITE, WRITE WITHOUT RESPONSE</div>
+                <span class="name-tag">SUBMIT</span>
+                <div class="nrf-actions">
+                  <span>⧉</span><span>❝</span><span class="pulse-btn">↑</span>
+                </div>
+              </div>
+              <div class="nrf-modal">
+                <div class="nrf-sheet">
+                  <h4>Write value · SUBMIT</h4>
+                  <div class="nrf-field">your answer<span class="caret"></span></div>
+                  <div class="nrf-enc">
+                    <span>Hex</span>
+                    <span class="on">Text / UTF-8</span>
+                    <span>Byte array</span>
+                  </div>
+                  <button class="nrf-send" type="button">Send</button>
+                </div>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div>
+                <div class="dev">DUCK-YELLOW</div>
+                <span class="nrf-pill">Connected</span>
+              </div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+
+          <!-- 4 Read FLAG -->
+          <div class="nrf-screen" data-nrf="4">
+            <div class="nrf-status"><span>16:30</span><span>●●●</span></div>
+            <div class="nrf-bar">
+              <span class="nrf-icons">☰</span>
+              <span class="nrf-disc">Disconnect</span>
+            </div>
+            <div class="nrf-body">
+              <div class="nrf-svc">
+                <div class="uuid">D0C40010-0000-1000-8000-00805F9B34FB</div>
+                <div class="lbl">Primary Service</div>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40012-…</div>
+                <div class="props">PROPERTIES: WRITE</div>
+                <span class="name-tag">SUBMIT</span>
+              </div>
+              <div class="nrf-char hot">
+                <div class="uuid">D0C40013-0000-1000-8000-00805F9B34FB</div>
+                <div class="props">PROPERTIES: READ</div>
+                <span class="name-tag">FLAG</span>
+                <div class="val ok">WiCyS{…………}</div>
+                <div class="nrf-actions">
+                  <span>⧉</span><span>❝</span><span class="pulse-btn">↓</span>
+                </div>
+              </div>
+              <div class="nrf-char">
+                <div class="uuid">D0C40014-…</div>
+                <div class="props">PROPERTIES: READ, NOTIFY</div>
+                <span class="name-tag">STATUS</span>
+                <div class="val ok">UNLOCKED</div>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div>
+                <div class="dev">DUCK-YELLOW</div>
+                <span class="nrf-pill">Connected</span>
+              </div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+          <div class="nrf-screen" data-nrf="5">
+            <div class="nrf-status"><span>16:30</span><span>●●●</span></div>
+            <div class="nrf-bar">
+              <span class="nrf-icons">☰</span>
+              <span class="nrf-disc">Disconnect</span>
+            </div>
+            <div class="nrf-body">
+              <div class="nrf-char hot">
+                <div class="uuid">D0C40012-0000-1000-8000-00805F9B34FB</div>
+                <div class="props">PROPERTIES: WRITE</div>
+                <span class="name-tag">SUBMIT</span>
+              </div>
+              <div class="nrf-modal">
+                <div class="nrf-sheet">
+                  <h4>Write value · SUBMIT</h4>
+                  <div class="nrf-field" style="color:#e85a4a">51 55 41 43 4B</div>
+                  <div class="nrf-enc">
+                    <span class="on" style="background:#b71c1c">Hex</span>
+                    <span>Text / UTF-8</span>
+                    <span>Byte array</span>
+                  </div>
+                  <button class="nrf-send" type="button" style="background:#b71c1c">Send (wrong encoding)</button>
+                </div>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div>
+                <div class="dev">DUCK-YELLOW</div>
+                <span class="nrf-pill">Connected</span>
+              </div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+
+          <div class="nrf-screen" data-nrf="6">
+            <div class="nrf-status"><span>16:30</span><span>nRF Connect</span></div>
+            <div class="nrf-bar"><span class="title">Scanner</span><span class="nrf-icons">↻ ⚙</span></div>
+            <div class="nrf-body">
+              <div class="nrf-scan-row hot">
+                <div class="nrf-rssi">−40</div>
+                <div>
+                  <div class="nm">DUCK-GREEN</div>
+                  <div class="sub">28:84:85:8D:4F:91 · Connectable</div>
+                </div>
+                <button class="nrf-connect-btn pulse" type="button">Connect</button>
+              </div>
+              <div class="nrf-scan-row">
+                <div class="nrf-rssi">−71</div>
+                <div><div class="nm">Apple Watch</div><div class="sub">Random · Connectable</div></div>
+              </div>
+            </div>
+            <div class="nrf-foot">
+              <span class="nrf-nav">‹</span>
+              <div><div class="dev">Scanner</div></div>
+              <span class="nrf-nav">›</span>
+            </div>
+          </div>
+
+  </div>
+</template>
+
+<div class="footer">
+  <span>← → or click · <kbd>F</kbd> fullscreen</span>
+  <div class="dots" id="dots"></div>
+  <span id="counter">1 / 1</span>
+</div>
+
+<script>
+/* ---- Pixel duck (same sprite as firmware) ---- */
+const SPR = [
+  ".....YYYY.......","....YYYYYY......","....YYKYYY......",
+  "....YYYYYYOOO...","....YYYYYYOOO...",".....YYYYY......",
+  ".....YYYY.......","..YYYYYYYYY..YY.",".YYYYYYYYYYYYYY.",
+  "YYYYYYYYYYYYYYY.","YyyyyyyyyyyyyyY.",".YyyyyyyyyyyyY..",
+  "..YYYYYYYYYYY..."
+];
+const TIERS = {
+  yellow:{body:0xFE89,shade:0xE545},
+  green:{body:0x3626,shade:0x1B85},
+};
+function rgb565(c){
+  const r=((c>>11)&31)*255/31|0,g=((c>>5)&63)*255/63|0,b=(c&31)*255/31|0;
+  return `rgb(${r},${g},${b})`;
+}
+function blend(bg,fg,a){
+  const br=(bg>>11)&31,bg6=(bg>>5)&63,bb=bg&31;
+  const fr=(fg>>11)&31,fg6=(fg>>5)&63,fb=fg&31;
+  const r=(fr*a+br*(255-a))/255|0,g=(fg6*a+bg6*(255-a))/255|0,b=(fb*a+bb*(255-a))/255|0;
+  return (r<<11)|(g<<5)|b;
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawDuck(ctx, opt){
+  const W=368,H=448,CELL=16,COLS=16,ROWS=13;
+  const OX=((W-COLS*CELL)/2)|0, OY=56, CX=OX+(COLS*CELL)/2, CY=OY+(ROWS*CELL)/2;
+  const WATER_Y=280, DEEP=340;
+  const tier=TIERS[opt.colour||'yellow'];
+  const pal={Y:tier.body,y:tier.shade,O:0xFC45,K:0x10A3};
+  const hot=opt.hot?{Y:blend(tier.body,0xFFFF,110),y:blend(tier.shade,0xFFFF,90),O:0xFE31,K:0x3942}:pal;
+  const t=opt.t||0;
+  const bob=opt.happy?Math.round(Math.sin(t*12)*6):Math.round(Math.sin(t*2.2)*4);
+
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<5;i++){
+    const ph=((t*0.4)+i/5)%1;
+    const r=28+ph*(220-28);
+    const g=Math.max(0,(0.38*(1-ph)*63)|0);
+    ctx.strokeStyle=`rgb(0,${g*4},0)`;
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(CX,CY,r,0,Math.PI*2); ctx.stroke();
+  }
+  for(let x=0;x<W;x+=4){
+    const s=WATER_Y+Math.round(3.2*Math.sin(x/26+t*1.6)+1.8*Math.sin(x/11-t*2.3));
+    ctx.fillStyle=rgb565(0x09CB); ctx.fillRect(x,s,4,H-s);
+    const d=Math.max(s,DEEP);
+    ctx.fillStyle=rgb565(0x0947); ctx.fillRect(x,d,4,H-d);
+    ctx.fillStyle=rgb565(0x3C99); ctx.fillRect(x,s,4,2);
+  }
+  for(let r=0;r<ROWS;r++){
+    const y=WATER_Y+(ROWS-1-r)*CELL+10-bob;
+    if(y>=H) continue;
+    for(let c=0;c<COLS;c++){
+      const ch=SPR[r][c]; if(ch==='.') continue;
+      ctx.fillStyle=rgb565(blend(0x09CB, pal[ch], 41));
+      ctx.fillRect(OX+c*CELL,y,CELL,CELL);
+    }
+  }
+  for(let i=0;i<2;i++){
+    const ph=(t*0.6+i/2)%1;
+    ctx.strokeStyle=rgb565(0x8EBF); ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.ellipse(CX,WATER_Y+6,40+ph*120,4+ph*8,0,0,Math.PI*2);
+    ctx.stroke();
+  }
+  const blink=((t*1000)%10000)<180;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const ch=SPR[r][c]; if(ch==='.') continue;
+    let col=hot[ch];
+    if(ch==='K'&&blink&&!opt.angry) col=hot.Y;
+    ctx.fillStyle=rgb565(col);
+    ctx.fillRect(OX+c*CELL,OY+r*CELL+bob,CELL,CELL);
+  }
+  if(opt.angry){
+    ctx.fillStyle=rgb565(hot.K);
+    ctx.fillRect(OX+6*CELL-4,OY+2*CELL+bob-10,CELL+20,5);
+  }
+  const n=opt.bobbers||0;
+  for(let i=0;i<n;i++){
+    const x=28+i*42;
+    const surf=WATER_Y+Math.round(3.2*Math.sin(x/26+t*1.6));
+    const cy=surf+Math.round(Math.sin(t*3+i)*2)+12;
+    ctx.strokeStyle='#C0C0C0'; ctx.beginPath(); ctx.moveTo(x,cy-25); ctx.lineTo(x,cy-18); ctx.stroke();
+    ctx.fillStyle='#F80000'; ctx.beginPath(); ctx.arc(x,cy,18,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(x-6,cy-6,2,0,Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle='#0A2C6A'; roundRect(ctx,16,H-10,W-32,6,3); ctx.fill();
+  ctx.fillStyle='#3B9FE0'; roundRect(ctx,16,H-10,(W-32)*0.72,6,3); ctx.fill();
+}
+
+const duckMode = {
+  calm:  { colour:'yellow', happy:false, hot:false, angry:false, bobbers:0 },
+  happy: { colour:'yellow', happy:true,  hot:true,  angry:false, bobbers:2 },
+  angry: { colour:'yellow', happy:false, hot:false, angry:true,  bobbers:0 },
+  green: { colour:'green',  happy:false, hot:false, angry:false, bobbers:0 },
+  loop:  { colour:'yellow', happy:false, hot:false, angry:false, bobbers:0 },
+};
+
+/** Same pixel sprite as the title-slide AMOLED — no oval placeholders. */
+function drawPixelSprite(ctx, ox, oy, cell, t, colour){
+  const COLS=16, ROWS=13;
+  const tier=TIERS[colour||'yellow'];
+  const pal={Y:tier.body,y:tier.shade,O:0xFC45,K:0x10A3};
+  const bob=Math.round(Math.sin((t||0)*2.2)*Math.max(1, cell*0.25));
+  const blink=(((t||0)*1000)%10000)<180;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const ch=SPR[r][c]; if(ch==='.') continue;
+    let col=pal[ch];
+    if(ch==='K'&&blink) col=pal.Y;
+    ctx.fillStyle=rgb565(col);
+    ctx.fillRect(ox+c*cell, oy+r*cell+bob, cell, cell);
+  }
+  return {
+    cx: ox + (COLS*cell)/2,
+    cy: oy + (ROWS*cell)/2 + bob,
+    w: COLS*cell,
+    h: ROWS*cell,
+  };
+}
+
+/** Mini AMOLED bezel with the real duck inside. */
+function drawDuckDevice(ctx, x, y, w, h, t, colour){
+  roundRect(ctx,x,y,w,h,14);
+  ctx.fillStyle='#000'; ctx.fill();
+  ctx.strokeStyle='#24384c'; ctx.lineWidth=2.5; ctx.stroke();
+  const cell = Math.max(3, Math.floor(Math.min((w-20)/16, (h-28)/13)));
+  const sprW = 16*cell, sprH = 13*cell;
+  const ox = x + ((w - sprW) / 2 | 0);
+  const oy = y + ((h - sprH) / 2 | 0) - 2;
+  return drawPixelSprite(ctx, ox, oy, cell, t, colour);
+}
+
+/* ---- Concept scene drawers ---- */
+function drawRadio(ctx, t){
+  const W=420,H=360;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a1826'; ctx.fillRect(0,0,W,H);
+  // phone
+  const px=48, py=100;
+  roundRect(ctx,px,py,70,130,12); ctx.fillStyle='#1a2e42'; ctx.fill();
+  ctx.fillStyle='#6ec8ff'; roundRect(ctx,px+8,py+16,54,90,6); ctx.fill();
+  // real pixel duck in device
+  const duck = drawDuckDevice(ctx, 250, 88, 130, 158, t, 'yellow');
+  // waves from duck
+  for(let i=0;i<4;i++){
+    const ph=(t*0.55+i/4)%1;
+    const r=48+ph*130;
+    ctx.strokeStyle=`rgba(240,193,74,${(1-ph)*0.7})`;
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(duck.cx, duck.cy, r, -Math.PI*0.75, Math.PI*0.75); ctx.stroke();
+  }
+  // listen arcs into phone
+  const catchPh = (Math.sin(t*2)+1)/2;
+  ctx.strokeStyle=`rgba(110,200,255,${0.35+catchPh*0.45})`;
+  ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(px+35,py+60, 35+catchPh*18, -0.9, 0.9); ctx.stroke();
+  ctx.fillStyle='#8aa4b8';
+  ctx.font='600 13px "Source Sans 3",sans-serif';
+  ctx.fillText('nRF Connect', px-4, py+150);
+  ctx.fillText('Duck', 292, 268);
+}
+
+function drawAdv(ctx, t){
+  const W=420,H=360;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a1826'; ctx.fillRect(0,0,W,H);
+  const phase = (t % 6) < 3 ? 0 : 1; // advertise then connect
+
+  const duck = drawDuckDevice(ctx, 155, 95, 120, 148, t, 'yellow');
+  const cx = duck.cx, cy = duck.cy;
+
+  if(phase===0){
+    for(let i=0;i<5;i++){
+      const ph=(t*0.7+i/5)%1;
+      ctx.strokeStyle=`rgba(240,193,74,${(1-ph)*0.65})`;
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(cx,cy, 50+ph*120, 0, Math.PI*2); ctx.stroke();
+    }
+    // floating name tags
+    const tags=[{x:40,y:55},{x:300,y:70},{x:36,y:270},{x:290,y:275}];
+    tags.forEach((p,i)=>{
+      const a=0.4+0.4*Math.sin(t*2+i);
+      ctx.globalAlpha=a;
+      ctx.fillStyle='#1e3d57';
+      roundRect(ctx,p.x,p.y,100,28,8); ctx.fill();
+      ctx.fillStyle='#f0c14a';
+      ctx.font='700 12px ui-monospace,Menlo,monospace';
+      ctx.fillText('DUCK-YELLOW', p.x+8, p.y+18);
+      ctx.globalAlpha=1;
+    });
+    ctx.fillStyle='#e8a03a';
+    ctx.font='700 16px Fraunces,Georgia,serif';
+    ctx.fillText('ADVERTISING', 150, 40);
+  } else {
+    // linked phone
+    const px=48, py=110;
+    roundRect(ctx,px,py,64,110,10); ctx.fillStyle='#1a2e42'; ctx.fill();
+    ctx.fillStyle='#6ec8ff'; roundRect(ctx,px+7,py+14,50,78,5); ctx.fill();
+    // solid link
+    const pulse = 0.5+0.5*Math.sin(t*6);
+    ctx.strokeStyle=`rgba(61,155,122,${0.55+pulse*0.45})`;
+    ctx.lineWidth=4;
+    ctx.beginPath(); ctx.moveTo(px+64,py+55); ctx.lineTo(cx-40,cy); ctx.stroke();
+    ctx.fillStyle='#3d9b7a';
+    ctx.font='700 16px Fraunces,Georgia,serif';
+    ctx.fillText('CONNECTED', 155, 40);
+    ctx.fillStyle='#8aa4b8';
+    ctx.font='600 13px "Source Sans 3",sans-serif';
+    ctx.fillText('private link', 168, 320);
+  }
+}
+
+function drawGatt(ctx, t){
+  const W=420,H=360;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a1826'; ctx.fillRect(0,0,W,H);
+  // cabinet
+  roundRect(ctx,90,50,240,260,12);
+  ctx.fillStyle='#122536'; ctx.fill();
+  ctx.strokeStyle='#2a4d6a'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#e8a03a';
+  ctx.font='700 15px Fraunces,Georgia,serif';
+  ctx.fillText('Service · Duck Game', 118, 78);
+
+  const rows = [
+    {n:'STORY', c:'#6ec8ff'},
+    {n:'SUBMIT', c:'#f0c14a'},
+    {n:'FLAG', c:'#3d9b7a'},
+    {n:'STATUS', c:'#c89be8'},
+  ];
+  const lit = Math.floor(t*0.9) % 4;
+  rows.forEach((f,i)=>{
+    const y=100+i*48;
+    const open = i===lit;
+    const x = open ? 118 : 108;
+    roundRect(ctx,x,y,200,38,8);
+    ctx.fillStyle= open ? '#1a3a52' : '#0e2236';
+    ctx.fill();
+    ctx.strokeStyle=f.c; ctx.lineWidth=open?2.5:1; ctx.stroke();
+    ctx.fillStyle=f.c;
+    ctx.font='700 14px ui-monospace,Menlo,monospace';
+    ctx.fillText(f.n, x+16, y+24);
+    if(open){
+      ctx.fillStyle='#8aa4b8';
+      ctx.font='600 11px "Source Sans 3",sans-serif';
+      ctx.fillText('characteristic', x+100, y+24);
+    }
+  });
+}
+
+function drawRW(ctx, t){
+  const W=420,H=360;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0a1826'; ctx.fillRect(0,0,W,H);
+  const half = (t % 5) < 2.5;
+
+  // phone left
+  roundRect(ctx,40,100,70,130,12); ctx.fillStyle='#1a2e42'; ctx.fill();
+  ctx.fillStyle='#6ec8ff'; roundRect(ctx,48,116,54,90,6); ctx.fill();
+  // real pixel duck on the right
+  const duck = drawDuckDevice(ctx, 268, 88, 120, 148, t, 'yellow');
+
+  const fromX = half ? duck.cx - 40 : 110;
+  const toX = half ? 110 : duck.cx - 40;
+  const prog = (t % 2.5) / 2.5;
+  const x = fromX + (toX-fromX)*prog;
+  const y = duck.cy + Math.sin(prog*Math.PI)*-20;
+
+  roundRect(ctx,x-36,y-16,72,32,8);
+  ctx.fillStyle = half ? '#1a4a3a' : '#4a3a12';
+  ctx.fill();
+  ctx.fillStyle = half ? '#7ddeb8' : '#f0c14a';
+  ctx.font='700 12px ui-monospace,Menlo,monospace';
+  ctx.fillText(half ? 'FLAG…' : 'answer', x-28, y+5);
+
+  // arrow
+  ctx.strokeStyle = half ? '#3d9b7a' : '#e8a03a';
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  if(half){ ctx.moveTo(duck.cx-50, duck.cy); ctx.lineTo(120, duck.cy); }
+  else { ctx.moveTo(110, duck.cy); ctx.lineTo(duck.cx-50, duck.cy); }
+  ctx.stroke();
+
+  ctx.fillStyle='#e8a03a';
+  ctx.font='700 18px Fraunces,Georgia,serif';
+  ctx.fillText(half ? 'READ  ↓' : 'WRITE  ↑', 160, 50);
+  ctx.fillStyle='#8aa4b8';
+  ctx.font='600 13px "Source Sans 3",sans-serif';
+  ctx.fillText(half ? 'Duck → Phone' : 'Phone → Duck', 155, 320);
+}
+
+/* ---- Deck + animation loop ---- */
+const slides = [...document.querySelectorAll('.slide')];
+const dots = document.getElementById('dots');
+const counter = document.getElementById('counter');
+let i = 0;
+let loopStep = 0;
+let loopMode = { ...duckMode.calm };
+
+slides.forEach((_, n) => {
+  const d = document.createElement('button');
+  d.className = 'dot' + (n === 0 ? ' on' : '');
+  d.type = 'button';
+  d.setAttribute('aria-label', 'Go to slide ' + (n + 1));
+  d.addEventListener('click', (e) => { e.stopPropagation(); show(n); });
+  dots.appendChild(d);
+});
+
+function show(n) {
+  i = (n + slides.length) % slides.length;
+  slides.forEach((s, k) => s.classList.toggle('active', k === i));
+  [...dots.children].forEach((d, k) => d.classList.toggle('on', k === i));
+  counter.textContent = (i + 1) + ' / ' + slides.length;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+    e.preventDefault(); show(i + 1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault(); show(i - 1);
+  } else if (e.key === 'Home') show(0);
+  else if (e.key === 'End') show(slides.length - 1);
+  else if (e.key === 'f' || e.key === 'F') {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  }
+});
+
+document.getElementById('deck').addEventListener('click', (e) => {
+  if (e.target.closest('.dot') || e.target.closest('.nrf-phone')) return;
+  show(e.clientX > window.innerWidth / 2 ? i + 1 : i - 1);
+});
+
+const NRF_HINTS = {
+  0: 'Find DUCK-YELLOW in the scanner',
+  1: 'Connected — open the Primary Service',
+  2: 'Tap ↓ Read on STORY — the scenario appears',
+  3: 'Write to SUBMIT as Text / UTF-8 — never Hex',
+  4: 'Read FLAG for your prize · STATUS = UNLOCKED',
+  5: 'Hex encoding looks wrong to the duck',
+  6: 'Same duck, new feathers — name is DUCK-GREEN',
+};
+const CHAR_NAMES = ['STORY', 'SUBMIT', 'FLAG', 'STATUS'];
+
+function showNrfScreen(phone, step) {
+  phone.querySelectorAll('.nrf-screen').forEach(s => {
+    s.classList.toggle('on', +s.dataset.nrf === step);
+  });
+  const wrap = phone.parentElement;
+  const hint = wrap?.querySelector('[data-nrf-hint]');
+  if (hint) hint.textContent = NRF_HINTS[step] || hint.textContent;
+}
+
+function highlightChars(phone, litIndex) {
+  const name = CHAR_NAMES[litIndex];
+  phone.querySelectorAll('.nrf-char').forEach(row => {
+    const tag = row.querySelector('.name-tag');
+    const match = tag && tag.textContent.trim() === name;
+    row.classList.toggle('hot', !!match);
+    row.classList.toggle('hot-char', !!match);
+  });
+}
+
+function driveNrfOnSlide(slide, t) {
+  slide.querySelectorAll('.nrf-phone').forEach(phone => {
+    const cycle = (phone.dataset.nrfCycle || '0').split(',').map(Number);
+    const period = parseFloat(phone.dataset.nrfPeriod || '3');
+    const idx = period >= 90 ? 0 : Math.floor(t / period) % cycle.length;
+    const step = cycle[idx];
+    if (phone._nrfStep !== step) {
+      phone._nrfStep = step;
+      showNrfScreen(phone, step);
+    }
+    if (phone.dataset.nrfHighlight === 'chars') {
+      highlightChars(phone, Math.floor(t * 0.85) % 4);
+    }
+  });
+}
+
+/* Mount shared nRF phone template into every [data-nrf-mount] */
+(function mountNrfPhones() {
+  const tpl = document.getElementById('nrf-tpl');
+  if (!tpl) return;
+  document.querySelectorAll('[data-nrf-mount]').forEach(slot => {
+    const phone = tpl.content.querySelector('.nrf-phone').cloneNode(true);
+    phone.dataset.mount = slot.dataset.nrfMount || '';
+    phone.dataset.nrfCycle = slot.dataset.nrfCycle || '0';
+    phone.dataset.nrfPeriod = slot.dataset.nrfPeriod || '3';
+    if (slot.dataset.nrfHighlight) phone.dataset.nrfHighlight = slot.dataset.nrfHighlight;
+    slot.replaceWith(phone);
+    showNrfScreen(phone, Number((phone.dataset.nrfCycle || '0').split(',')[0]));
+  });
+})();
+
+const start = performance.now();
+
+function frame(now){
+  const t = (now - start) / 1000;
+  const active = slides[i];
+  const scene = active?.dataset.scene;
+
+  active.querySelectorAll('canvas[data-duck]').forEach(c => {
+    const key = c.dataset.duck;
+    const ctx = c.getContext('2d');
+    let opt;
+    if (key === 'loop') {
+      loopStep = Math.floor(t / 2.4) % 5;
+      if (loopStep <= 3) opt = { ...duckMode.calm, t };
+      else opt = { ...duckMode.happy, t };
+      document.querySelectorAll('#loop-flow .chip, #loop-flow .arrow').forEach(el => {
+        const s = +el.dataset.step;
+        const isArrow = el.classList.contains('arrow');
+        if (isArrow) el.classList.toggle('on', s < loopStep);
+        else el.classList.toggle('on', s === loopStep);
+      });
+    } else {
+      opt = { ...duckMode[key], t };
+    }
+    drawDuck(ctx, opt);
+  });
+
+  if (active) driveNrfOnSlide(active, t);
+
+  if (scene === 'doors') {
+    const lit = Math.floor(t * 0.85) % 4;
+    active.querySelectorAll('.door').forEach(d => {
+      d.classList.toggle('lit', +d.dataset.door === lit);
+    });
+  }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+show(0);
+</script>
+</body>
+</html>
